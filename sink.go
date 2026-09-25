@@ -39,6 +39,9 @@ type Recorder interface {
 // when the backend correlates traces, the trace_id. As with Recorder, this
 // package ships only a no-op; a small custom shim over the consumer's logger
 // (log/slog, zap, etc.) provides the real thing.
+//
+// Both sinks can read request-scoped fields (method, route, and so on) the
+// caller attached with ContextWithFields by calling FieldsFromContext on ctx.
 type Logger interface {
 	LogCoded(ctx context.Context, code int, err error)
 }
