@@ -36,11 +36,16 @@ import (
 	apperr "github.com/Bugs5382/go-apperr"
 )
 
-// slogLogger implements apperr.Logger over log/slog.
+// slogLogger implements apperr.Logger over log/slog. It adds any request
+// fields the caller attached with apperr.ContextWithFields to the log line.
 type slogLogger struct{ log *slog.Logger }
 
 func (s slogLogger) LogCoded(ctx context.Context, code int, err error) {
-	s.log.ErrorContext(ctx, "coded error", "code", code, "error", err)
+	args := []any{"code", code, "error", err}
+	for _, f := range apperr.FieldsFromContext(ctx) {
+		args = append(args, f.Key, f.Value)
+	}
+	s.log.ErrorContext(ctx, "coded error", args...)
 }
 
 // countingRecorder implements apperr.Recorder. A real one would set an
@@ -64,8 +69,14 @@ func main() {
 		panic(err)
 	}
 
+	// A request handler attaches its own metadata once; both sinks can read it.
+	ctx := apperr.ContextWithFields(context.Background(),
+		apperr.Field{Key: "method", Value: "GET"},
+		apperr.Field{Key: "route", Value: "/widgets/{id}"},
+	)
+
 	internal := apperr.Coded(1002, errors.New("dial upstream: i/o timeout"))
 	// PresentContext drives both sinks; the returned client message is what a
 	// handler would send back, dropped here for brevity.
-	_, _ = reg.PresentContext(context.Background(), internal, 1000)
+	_, _ = reg.PresentContext(ctx, internal, 1000)
 }

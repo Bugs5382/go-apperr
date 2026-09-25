@@ -74,6 +74,25 @@ func (s slogLogger) LogCoded(ctx context.Context, code int, err error) {
 reg, _ := apperr.NewRegistry(entries, apperr.WithLogger(slogLogger{log: mySlog}))
 ```
 
+To get request metadata (method, route, and so on) into the sinks, attach it to the context once
+at the edge. A sink reads it back from the `ctx` it already receives, so the interfaces stay the
+same:
+
+```go
+ctx = apperr.ContextWithFields(ctx,
+    apperr.Field{Key: "method", Value: r.Method},
+    apperr.Field{Key: "route", Value: route},
+)
+msg, code := reg.PresentContext(ctx, err, 1001)
+
+// inside a sink
+for _, f := range apperr.FieldsFromContext(ctx) {
+    args = append(args, f.Key, f.Value)
+}
+```
+
+Fields keep the order they were added, and `FieldsFromContext` returns nil when there are none.
+
 A `Recorder` plugs in the same way — implement `RecordCode` over your tracer (OpenTelemetry, etc.)
 to set the code on the active span. Nothing is bundled, so **your `go.mod` stays free of any
 dependency you did not choose.** 🎯
