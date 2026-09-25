@@ -1,19 +1,19 @@
 # go-apperr 🔢
 
-> 🏷️ Turn internal errors into stable, reportable numeric **codes** — with logging and tracing you plug in, not baked in.
+> Turn internal errors into stable, reportable numeric **codes** — with logging and tracing you plug in, not baked in.
 
 An internal error should not leak its guts to a client, and "internal error" with no handle is
 useless in a bug report. `go-apperr` wraps a cause with a stable code that travels the error chain,
-and at the edge renders a sanitized, quotable message. 🔌 **Bring your own logging and tracing:**
+and at the edge renders a sanitized, quotable message. **Bring your own logging and tracing:**
 the package depends on **nothing** beyond the standard library.
 
 ## ✨ Highlights
 
-- 🧬 **Codes ride the error chain** — `errors.Is`/`errors.As` keep working; recover the code anywhere.
-- 🧼 **Sanitized at the edge** — clients get a code they can quote, never the raw internal detail.
-- 🪶 **Zero dependencies** — the `go.mod` requires only the standard library.
-- 🔧 **Pluggable observability** — tiny `Recorder`/`Logger` interfaces, no-op by default.
-- 📝 **Docs-ready** — render your whole code table as Markdown.
+- **Codes ride the error chain** — `errors.Is`/`errors.As` keep working; recover the code anywhere.
+- **Sanitized at the edge** — clients get a code they can quote, never the raw internal detail.
+- **Zero dependencies** — the `go.mod` requires only the standard library.
+- **Pluggable observability** — tiny `Recorder`/`Logger` interfaces, no-op by default.
+- **Docs-ready** — render your whole code table as Markdown.
 
 ## 📦 Install
 
@@ -109,7 +109,7 @@ Fields keep the order they were added, and `FieldsFromContext` returns nil when 
 
 A `Recorder` plugs in the same way — implement `RecordCode` over your tracer (OpenTelemetry, etc.)
 to set the code on the active span. Nothing is bundled, so **your `go.mod` stays free of any
-dependency you did not choose.** 🎯
+dependency you did not choose.**
 
 ## 📚 Examples
 
