@@ -158,3 +158,109 @@ func TestNilSinkOptionsAreIgnored(t *testing.T) {
 		t.Fatalf("code = %d; want 1001", code)
 	}
 }
+
+// TestWithServiceSingleDigitUnchanged pins the v1 behavior of a one-digit
+// prefix: any code whose leading digit matches passes, whatever its length.
+func TestWithServiceSingleDigitUnchanged(t *testing.T) {
+	t.Parallel()
+
+	for _, c := range []int{1, 12, 100, 1001, 19999, 123456, -1001} {
+		if _, err := apperr.NewRegistry([]apperr.Entry{{Code: c}}, apperr.WithService(1)); err != nil {
+			t.Errorf("code %d with WithService(1): unexpected error %v", c, err)
+		}
+	}
+	for _, c := range []int{0, 2001, 9} {
+		if _, err := apperr.NewRegistry([]apperr.Entry{{Code: c}}, apperr.WithService(1)); err == nil {
+			t.Errorf("code %d with WithService(1): expected an error", c)
+		}
+	}
+	if _, err := apperr.NewRegistry([]apperr.Entry{{Code: 0}}, apperr.WithService(0)); err != nil {
+		t.Errorf("code 0 with WithService(0): unexpected error %v", err)
+	}
+}
+
+func TestWithServiceMultiDigitPrefix(t *testing.T) {
+	t.Parallel()
+
+	if _, err := apperr.NewRegistry([]apperr.Entry{{Code: 12001}, {Code: 12999}, {Code: 1200}}, apperr.WithService(12)); err != nil {
+		t.Fatalf("codes starting with 12 should pass: %v", err)
+	}
+	for _, c := range []int{1001, 13001, 21001, 1, 102001} {
+		if _, err := apperr.NewRegistry([]apperr.Entry{{Code: c}}, apperr.WithService(12)); err == nil {
+			t.Errorf("code %d with WithService(12): expected an error", c)
+		}
+	}
+	if _, err := apperr.NewRegistry([]apperr.Entry{{Code: 123001}}, apperr.WithService(123)); err != nil {
+		t.Fatalf("three-digit prefix: %v", err)
+	}
+}
+
+func TestWithCodeDigitsDerivesRange(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		prefix int
+		digits int
+		code   int
+		ok     bool
+	}{
+		{"single digit low edge", 1, 4, 1000, true},
+		{"single digit high edge", 1, 4, 1999, true},
+		{"single digit too short", 1, 4, 100, false},
+		{"single digit too long", 1, 4, 10000, false},
+		{"two digit low edge", 12, 5, 12000, true},
+		{"two digit high edge", 12, 5, 12999, true},
+		{"two digit below range", 12, 5, 11999, false},
+		{"two digit above range", 12, 5, 13000, false},
+		{"two digit too short", 12, 5, 1200, false},
+		{"two digit too long", 12, 5, 120001, false},
+		{"three digit", 123, 6, 123456, true},
+		{"three digit wrong prefix", 123, 6, 124456, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := apperr.NewRegistry([]apperr.Entry{{Code: tc.code}},
+				apperr.WithService(tc.prefix), apperr.WithCodeDigits(tc.digits))
+			if tc.ok && err != nil {
+				t.Fatalf("code %d, prefix %d, %d digits: unexpected error %v", tc.code, tc.prefix, tc.digits, err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("code %d, prefix %d, %d digits: expected an error", tc.code, tc.prefix, tc.digits)
+			}
+		})
+	}
+}
+
+func TestWithCodeDigitsRejectsBadConfig(t *testing.T) {
+	t.Parallel()
+
+	// The width must leave room for at least one digit after the prefix.
+	if _, err := apperr.NewRegistry(nil, apperr.WithService(12), apperr.WithCodeDigits(2)); err == nil {
+		t.Fatal("a width equal to the prefix length should fail")
+	}
+	if _, err := apperr.NewRegistry(nil, apperr.WithCodeDigits(0)); err == nil {
+		t.Fatal("a non-positive width should fail")
+	}
+}
+
+func TestWithCodeDigitsWithoutService(t *testing.T) {
+	t.Parallel()
+
+	if _, err := apperr.NewRegistry([]apperr.Entry{{Code: 1001}, {Code: 9999}}, apperr.WithCodeDigits(4)); err != nil {
+		t.Fatalf("four-digit codes should pass: %v", err)
+	}
+	if _, err := apperr.NewRegistry([]apperr.Entry{{Code: 100}}, apperr.WithCodeDigits(4)); err == nil {
+		t.Fatal("a three-digit code should fail a four-digit width")
+	}
+}
+
+func TestMultiDigitPrefixStillRejectsDuplicate(t *testing.T) {
+	t.Parallel()
+	_, err := apperr.NewRegistry([]apperr.Entry{{Code: 12001}, {Code: 12001}},
+		apperr.WithService(12), apperr.WithCodeDigits(5))
+	if err == nil {
+		t.Fatal("expected an error for a duplicate code")
+	}
+}
