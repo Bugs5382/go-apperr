@@ -40,10 +40,14 @@ const defaultMessageTemplate = "Code %d: Internal Error"
 // for the code; Cause is a one-line internal description. Both are for the
 // consumer's own error-codes documentation (see Markdown) and are never shown
 // to a client -- only the code and the rendered message template are.
+//
+// Category is optional and transport-neutral; left unset it is
+// CategoryInternal. Registry.Category reads it back from a coded error.
 type Entry struct {
-	Code  int
-	Title string
-	Cause string
+	Code     int
+	Title    string
+	Cause    string
+	Category Category
 }
 
 // Registry is the consumer's own set of codes plus the presentation and
@@ -125,7 +129,8 @@ func WithLogger(l Logger) Option {
 
 // NewRegistry builds a Registry from the consumer's codes and options. It fails
 // on a duplicate code, on any code outside the service prefix when WithService
-// is set, and on any code of the wrong width when WithCodeDigits is set.
+// is set, on any code of the wrong width when WithCodeDigits is set, and on an
+// unknown Category value.
 func NewRegistry(entries []Entry, opts ...Option) (*Registry, error) {
 	r := &Registry{
 		entries:  make(map[int]Entry, len(entries)),
@@ -142,6 +147,9 @@ func NewRegistry(entries []Entry, opts ...Option) (*Registry, error) {
 	for _, e := range entries {
 		if _, dup := r.entries[e.Code]; dup {
 			return nil, fmt.Errorf("apperr: duplicate code %d", e.Code)
+		}
+		if !e.Category.valid() {
+			return nil, fmt.Errorf("apperr: code %d has unknown category %d", e.Code, int(e.Category))
 		}
 		if err := r.checkCode(e.Code); err != nil {
 			return nil, err

@@ -20,6 +20,11 @@
 // code is easy to attribute at a glance; it is optional. A prefix may be one
 // digit or several, and WithCodeDigits fixes the code width so each prefix owns
 // a single range (WithService(12) with WithCodeDigits(5) owns 12000-12999).
+//
+// An Entry may also declare a transport-neutral Category (internal by default).
+// Registry.Category looks it up from a coded error, so one mapper per transport
+// can turn any code into a gRPC or HTTP status without this package importing
+// either.
 package apperr
 
 /*
