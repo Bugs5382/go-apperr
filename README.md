@@ -66,6 +66,45 @@ registries keep their codes.
 `Markdown` renders the whole registry as a `Code | Area | Cause` table (sorted by code) for your
 error-codes doc.
 
+## 🧭 Map to a transport
+
+An entry can carry an optional, transport-neutral `Category`: `CategoryInternal` (the default when
+unset), `CategoryNotFound`, `CategoryInvalid`, `CategoryUnavailable` or `CategoryPermissionDenied`.
+`reg.Category(err)` looks it up from a coded error, and falls back to internal for an uncoded or
+unregistered one. One small mapper per transport then covers every code:
+
+```go
+reg, _ := apperr.NewRegistry([]apperr.Entry{
+    {Code: 1002, Title: "widget", Cause: "widget not found", Category: apperr.CategoryNotFound},
+})
+
+// gRPC, in your server package
+func grpcCode(c apperr.Category) codes.Code {
+    switch c {
+    case apperr.CategoryNotFound:
+        return codes.NotFound
+    case apperr.CategoryInvalid:
+        return codes.InvalidArgument
+    case apperr.CategoryUnavailable:
+        return codes.Unavailable
+    case apperr.CategoryPermissionDenied:
+        return codes.PermissionDenied
+    default:
+        return codes.Internal
+    }
+}
+
+msg, _ := reg.Present(err, 1000)
+return status.Error(grpcCode(reg.Category(err)), msg)
+
+// HTTP: the same switch returning http.StatusNotFound, http.StatusBadRequest,
+// http.StatusServiceUnavailable, http.StatusForbidden or http.StatusInternalServerError
+http.Error(w, msg, httpStatus(reg.Category(err)))
+```
+
+`go-apperr` itself imports neither transport; the mappers live in your code. The `Markdown` table
+is unchanged by categories, so existing error-codes docs stay in sync.
+
 ## 🔌 Bring your own logging and tracing
 
 The package calls two tiny interfaces, defaulting to no-ops:
