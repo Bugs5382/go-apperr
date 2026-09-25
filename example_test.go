@@ -52,6 +52,23 @@ func ExampleRegistry_Present() {
 	// Output: Code 1002: Internal Error | 1002
 }
 
+// ExampleWithCodeDigits gives a service a two-digit prefix and fixed-width
+// codes, so it owns 12000 through 12999 and anything else fails registration.
+func ExampleWithCodeDigits() {
+	_, err := apperr.NewRegistry([]apperr.Entry{
+		{Code: 12001, Title: "database", Cause: "database unavailable"},
+	}, apperr.WithService(12), apperr.WithCodeDigits(5))
+	fmt.Println(err)
+
+	_, err = apperr.NewRegistry([]apperr.Entry{
+		{Code: 13001, Title: "database", Cause: "database unavailable"},
+	}, apperr.WithService(12), apperr.WithCodeDigits(5))
+	fmt.Println(err)
+	// Output:
+	// <nil>
+	// apperr: code 13001 does not start with service prefix 12
+}
+
 // ExampleRegistry_Markdown renders the registry as a docs table, sorted by
 // code.
 func ExampleRegistry_Markdown() {

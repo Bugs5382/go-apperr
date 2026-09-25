@@ -15,9 +15,11 @@
 // the examples). Nothing is bundled, so a consumer's go.mod stays free of any
 // dependency they did not choose.
 //
-// Codes are the consumer's own namespace. The first-digit-of-code convention
+// Codes are the consumer's own namespace. The service prefix convention
 // (WithService) is one supported way to let each service own a code prefix so a
-// code is easy to attribute at a glance; it is optional.
+// code is easy to attribute at a glance; it is optional. A prefix may be one
+// digit or several, and WithCodeDigits fixes the code width so each prefix owns
+// a single range (WithService(12) with WithCodeDigits(5) owns 12000-12999).
 package apperr
 
 /*

@@ -48,6 +48,20 @@ msg, code := reg.Present(apperr.Coded(1002, dbErr), 1001)
 // an uncoded error falls back to the default code you pass.
 ```
 
+A service prefix can be longer than one digit. `WithService(12)` accepts codes that start with
+`12`, and `WithCodeDigits` fixes the code width so each prefix owns one range:
+
+```go
+reg, err := apperr.NewRegistry(entries,
+    apperr.WithService(12),     // this service owns the "12" prefix
+    apperr.WithCodeDigits(5),   // five-digit codes: 12000 through 12999
+)
+// 13001, 1201 and 120001 fail registration; so does a duplicate code.
+```
+
+A one-digit prefix keeps its original rule (any code whose first digit matches), so existing
+registries keep their codes.
+
 `WithMessageTemplate` overrides the client message; `Describe` looks a code back up for operators;
 `Markdown` renders the whole registry as a `Code | Area | Cause` table (sorted by code) for your
 error-codes doc.
