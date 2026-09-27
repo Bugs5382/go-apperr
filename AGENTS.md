@@ -61,6 +61,8 @@ module):
 
 - See `CLAUDE.md` for the branch/commit/PR rules; they are enforced by the git hooks in
   `.claude/hooks` (run `bash .claude/hooks/install.sh` once per clone).
+- Open every PR as a draft. CI skips drafts, so run the full checks locally, push once they pass,
+  and mark the PR ready when the work is finished; see CLAUDE.md "CI and Actions minutes".
 - Keep the package dependency-free: it must import no logging, tracing, or third-party package.
   Observability backends are the consumer's own adapter, never added here.
 - Any change to `Recorder`, `Logger`, or an exported registry method is a public-API change: keep
