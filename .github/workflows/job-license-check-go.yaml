@@ -36,9 +36,3 @@ jobs:
           go install github.com/google/go-licenses@latest
           "$(go env GOPATH)/bin/go-licenses" check ./... \
             --allowed_licenses=MIT,ISC,Apache-2.0,BSD-2-Clause,BSD-3-Clause,0BSD,CC0-1.0,Unlicense,MPL-2.0,CC-BY-4.0
-
-      - name: Check dependency licenses (apperrgrpc)
-        working-directory: apperrgrpc
-        run: |
-          "$(go env GOPATH)/bin/go-licenses" check ./... \
-            --allowed_licenses=MIT,ISC,Apache-2.0,BSD-2-Clause,BSD-3-Clause,0BSD,CC0-1.0,Unlicense,MPL-2.0,CC-BY-4.0

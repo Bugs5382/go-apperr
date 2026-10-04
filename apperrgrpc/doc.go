@@ -13,9 +13,9 @@
 // message, or the generic template. FromStatus and FromError read an ErrorInfo
 // back into an Info.
 //
-// This package is its own Go module, so the gRPC dependency stays out of the
-// root go-apperr module: a service that does not import apperrgrpc never
-// downloads gRPC.
+// This package is part of the root go-apperr module. A service that imports
+// only the root apperr package links none of the gRPC code this package pulls
+// in.
 package apperrgrpc
 
 /*

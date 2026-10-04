@@ -7,13 +7,15 @@
 // client-safe message: the caller learns a code they can quote in a bug report,
 // never the raw internal detail.
 //
-// The package is dependency-free: it imports no logging, tracing, or
-// third-party package, only the standard library. Observability is pluggable
+// The package imports no logging, tracing, or third-party package, only the
+// standard library. Observability is pluggable
 // through two small interfaces, Recorder and Logger, wired with WithRecorder
 // and WithLogger and defaulting to no-ops. Bring any stack -- log/slog,
 // OpenTelemetry, zap -- by writing a few-line adapter that implements them (see
-// the examples). Nothing is bundled, so a consumer's go.mod stays free of any
-// dependency they did not choose.
+// the examples). Nothing is bundled into this package. The module does require
+// gRPC for the apperrgrpc subpackage, but a binary that imports only this
+// package links no gRPC code: Go's linker drops packages that are never
+// imported.
 //
 // Codes are the consumer's own namespace. The service prefix convention
 // (WithService) is one supported way to let each service own a code prefix so a
@@ -36,8 +38,7 @@
 // WithMeta attaches wire metadata to one error and Metadata reads it back.
 // Unlike request Fields, which describe the request and reach only the sinks,
 // wire metadata describes the failure and is meant to reach the client. The
-// apperrgrpc module, a separate Go module so this one stays dependency-free,
-// sends the symbol, metadata and numeric code as a gRPC ErrorInfo and parses
+// apperrgrpc subpackage sends the symbol, metadata and numeric code as a gRPC ErrorInfo and parses
 // them back.
 package apperr
 

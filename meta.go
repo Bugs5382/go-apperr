@@ -43,7 +43,7 @@ type metaError struct {
 
 // WithMeta returns err carrying the given wire metadata: key/value pairs that
 // describe this one failure and travel with it to the client, such as the ID a
-// request was refused for. A transport adapter (see the apperrgrpc module)
+// request was refused for. A transport adapter (see the apperrgrpc package)
 // puts them on the wire, and a user-safe Entry's Message fills its {key}
 // placeholders from them. Recover them with Metadata.
 //
