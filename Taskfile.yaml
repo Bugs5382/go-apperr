@@ -18,18 +18,22 @@ tasks:
     desc: Build all packages
     cmds:
       - go build ./...
+      - cd apperrgrpc && go build ./...
   vet:
     desc: Run go vet
     cmds:
       - go vet ./...
+      - cd apperrgrpc && go vet ./...
   test:
     desc: Run tests
     cmds:
       - go test -parallel {{.TESTPARALLELISM}} ./...
+      - cd apperrgrpc && go test -parallel {{.TESTPARALLELISM}} ./...
   test-cover:
     desc: Run tests with coverage reporting
     cmds:
       - go test ./... -cover
+      - cd apperrgrpc && go test ./... -cover
   lint:
     desc: Run all linters
     deps: [test]
@@ -38,6 +42,7 @@ tasks:
         unformatted="$(gofmt -l .)"
         if [ -n "$unformatted" ]; then echo "gofmt needed on:"; echo "$unformatted"; exit 1; fi
       - golangci-lint run
+      - cd apperrgrpc && golangci-lint run
       - yamllint .
   ci:
     desc: Full local CI gate -- build, vet, test, and lint (golangci-lint + yamllint)
