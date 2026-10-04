@@ -29,7 +29,9 @@ import "strconv"
 // lets one shared mapper per transport (a gRPC status, an HTTP status) turn any
 // coded error into the right response, instead of every service keeping its
 // own code-to-status table. The package never imports a transport; see the
-// Registry.Category examples for gRPC and HTTP mappers.
+// Registry.Category examples for gRPC and HTTP mappers, and the apperrgrpc
+// module for a ready-made gRPC one. New categories are only ever appended, so
+// a constant's value never changes.
 //
 // The zero value is CategoryInternal, so an Entry that sets no Category is
 // internal, exactly as before categories existed.
@@ -48,6 +50,18 @@ const (
 	// CategoryPermissionDenied means the caller is known but not allowed to do
 	// this.
 	CategoryPermissionDenied
+	// CategoryFailedPrecondition means the request is valid but the system is
+	// not in a state that allows it, such as a stage with no approver yet.
+	// Retrying will not help until that state changes.
+	CategoryFailedPrecondition
+	// CategoryDeadlineExceeded means the operation ran out of time before it
+	// finished.
+	CategoryDeadlineExceeded
+	// CategoryUnauthenticated means the caller has no valid credentials.
+	CategoryUnauthenticated
+	// CategoryAlreadyExists means the thing the caller tried to create exists
+	// already.
+	CategoryAlreadyExists
 
 	// categoryCount marks the end of the known categories for validation.
 	categoryCount
@@ -55,16 +69,21 @@ const (
 
 // categoryNames holds the stable, kebab-case name of each known category.
 var categoryNames = [categoryCount]string{
-	CategoryInternal:         "internal",
-	CategoryNotFound:         "not-found",
-	CategoryInvalid:          "invalid",
-	CategoryUnavailable:      "unavailable",
-	CategoryPermissionDenied: "permission-denied",
+	CategoryInternal:           "internal",
+	CategoryNotFound:           "not-found",
+	CategoryInvalid:            "invalid",
+	CategoryUnavailable:        "unavailable",
+	CategoryPermissionDenied:   "permission-denied",
+	CategoryFailedPrecondition: "failed-precondition",
+	CategoryDeadlineExceeded:   "deadline-exceeded",
+	CategoryUnauthenticated:    "unauthenticated",
+	CategoryAlreadyExists:      "already-exists",
 }
 
 // String returns the category's stable name ("internal", "not-found",
-// "invalid", "unavailable", "permission-denied"), suitable for a log field or
-// span attribute. An unknown value renders as "Category(n)".
+// "invalid", "unavailable", "permission-denied", "failed-precondition",
+// "deadline-exceeded", "unauthenticated", "already-exists"), suitable for a
+// log field or span attribute. An unknown value renders as "Category(n)".
 func (c Category) String() string {
 	if c.valid() {
 		return categoryNames[c]
