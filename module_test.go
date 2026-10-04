@@ -1,3 +1,6 @@
+package apperr_test
+
+/*
 MIT License
 
 Copyright (c) 2026 Shane
@@ -17,5 +20,35 @@ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+*/
+
+import (
+	"io/fs"
+	"path/filepath"
+	"testing"
+)
+
+// Every package ships in the root module; a nested go.mod splits the repo into
+// modules that are versioned and tagged on their own.
+func TestSingleModule(t *testing.T) {
+	var mods []string
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && d.Name() == "go.mod" {
+			mods = append(mods, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mods) != 1 || mods[0] != "go.mod" {
+		t.Fatalf("go.mod files = %v; want only the root go.mod", mods)
+	}
+}

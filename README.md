@@ -5,18 +5,18 @@
 An internal error should not leak its guts to a client, and "internal error" with no handle is
 useless in a bug report. `go-apperr` wraps a cause with a stable code that travels the error chain,
 and at the edge renders a sanitized, quotable message. 🔌 **Bring your own logging and tracing:**
-the package depends on **nothing** beyond the standard library.
+the core `apperr` package imports **nothing** beyond the standard library.
 
 ## ✨ Highlights
 
 - 🧬 **Codes ride the error chain** — `errors.Is`/`errors.As` keep working; recover the code anywhere.
 - 🧼 **Sanitized at the edge** — clients get a code they can quote, never the raw internal detail.
-- 🪶 **Zero dependencies** — the `go.mod` requires only the standard library.
+- 🪶 **Stdlib-only core** — the `apperr` package imports only the standard library; a binary that imports just it links no gRPC code.
 - 🔧 **Pluggable observability** — tiny `Recorder`/`Logger` interfaces, no-op by default.
 - 📝 **Docs-ready** — render your whole code table as Markdown.
 - 🔤 **Symbols and user-safe messages** — a stable `SCREAMING_SNAKE` name per code, and an opt-in message end users may see.
 - 📨 **Wire metadata** — key/value pairs on one error that travel to the client.
-- 🛰️ **gRPC adapter** — `apperrgrpc`, its own module, builds a status with `ErrorInfo` and reads it back.
+- 🛰️ **gRPC adapter** — the `apperrgrpc` subpackage builds a status with `ErrorInfo` and reads it back.
 
 ## 📦 Install
 
@@ -24,13 +24,14 @@ the package depends on **nothing** beyond the standard library.
 go get github.com/Bugs5382/go-apperr
 ```
 
-No third-party dependencies come with it — you add a logger or tracer only if you wire one.
+One module, one version. The module requires gRPC (`google.golang.org/grpc`,
+`google.golang.org/genproto/googleapis/rpc`, `google.golang.org/protobuf`) for the `apperrgrpc`
+subpackage, so `go get` records those in your `go.sum`. Importing only the root `apperr` package
+still puts no gRPC code into your binary: Go's linker drops packages you never import. You add a
+logger or tracer only if you wire one.
 
-The gRPC adapter is a separate module, so only a service that imports it downloads gRPC:
-
-```bash
-go get github.com/Bugs5382/go-apperr/apperrgrpc
-```
+The gRPC adapter ships in the same module; import it as
+`github.com/Bugs5382/go-apperr/apperrgrpc`.
 
 ## 🚀 Core usage
 
@@ -199,8 +200,9 @@ if info, ok := apperrgrpc.FromError(err); ok {
 ```
 
 `codeNum` always rides along, so a relaying service recovers the original code without a copy of
-the remote registry. `FromStatus` does the same for a `*status.Status`. The adapter is its own Go
-module (`github.com/Bugs5382/go-apperr/apperrgrpc`), so the root module keeps zero dependencies.
+the remote registry. `FromStatus` does the same for a `*status.Status`. The adapter is a
+subpackage of the root module (`github.com/Bugs5382/go-apperr/apperrgrpc`); a service that imports
+only `apperr` links none of its gRPC code.
 
 ## 🔌 Bring your own logging and tracing
 
@@ -262,8 +264,8 @@ a code is attributable at a glance.
 ## 🛠 Develop
 
 ```bash
-task build    # go build ./... (root module and apperrgrpc)
-task test     # go test ./... (root module and apperrgrpc)
+task build    # go build ./...
+task test     # go test ./...
 task lint     # gofmt + golangci-lint + yamllint
 task license  # inject MIT headers (golic)
 ```

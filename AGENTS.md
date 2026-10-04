@@ -26,7 +26,7 @@ with the app that also uses `go-apperr`) is the wrong layer. Libraries should re
 errors; the app assigns codes. Each app owns its own code prefix (see `WithService`) so a code is
 attributable at a glance.
 
-## Public API (`package apperr`, dependency-free)
+## Public API (`package apperr`, standard library only)
 
 - Errors: `Coded`, `Code`; wire metadata `WithMeta`, `Meta`, `MetaPair`, `Metadata`.
 - Registry: `Entry` (with `Category`, `Symbol`, `UserSafe`, `Message`), `Registry`, `NewRegistry`,
@@ -36,13 +36,14 @@ attributable at a glance.
 - Sinks: the neutral `Recorder` and `Logger` interfaces (default no-op), and request `Field`s
   (`ContextWithFields`, `FieldsFromContext`).
 
-## gRPC adapter (`apperrgrpc`, its own module)
+## gRPC adapter (`apperrgrpc`, a subpackage of the root module)
 
-`github.com/Bugs5382/go-apperr/apperrgrpc` has its own `go.mod` so gRPC never enters the root
-module. Its `go.mod` requires the root module at the release that added the features it uses and
-keeps `replace github.com/Bugs5382/go-apperr => ../`, so local builds and CI always use the
-checkout; consumers ignore the replace. Release it with an `apperrgrpc/vX.Y.Z` tag after the root
-tag it requires exists.
+`github.com/Bugs5382/go-apperr/apperrgrpc` is a plain subpackage: the repo has exactly one
+`go.mod`, at the root, and one `vX.Y.Z` tag versions everything. The root module requires
+`google.golang.org/grpc`, `google.golang.org/genproto/googleapis/rpc` and
+`google.golang.org/protobuf` for it. A binary that imports only the root `apperr` package still
+links no gRPC code, because Go's linker drops packages that are never imported.
+`TestSingleModule` (`module_test.go`) fails if a nested `go.mod` ever appears again.
 
 - `Code(Category) codes.Code`, `MetaCodeNum` (`"codeNum"`).
 - `Status(ctx, reg, err, defaultCode, domain) *status.Status` and `Error(...) error`.
@@ -50,8 +51,7 @@ tag it requires exists.
 
 ## Layout
 
-Root module `github.com/Bugs5382/go-apperr` (stdlib only -- `go list -m all` shows just this
-module), plus the separate `apperrgrpc` module:
+One module, `github.com/Bugs5382/go-apperr`, with a single `go.mod` at the root:
 
 - `doc.go` - package overview.
 - `apperr.go` - `Coded`, the internal `codedError`, `Code`.
@@ -61,16 +61,17 @@ module), plus the separate `apperrgrpc` module:
 - `category.go` - `Category`, its constants and `Registry.Category`.
 - `fields.go` - request `Field`s for the sinks.
 - `meta.go` - wire metadata: `WithMeta`, `Meta`, `Metadata`.
-- `apperrgrpc/` - the gRPC adapter module (see above).
+- `apperrgrpc/` - the gRPC adapter subpackage (see above).
+- `module_test.go` - guard that the repo stays a single module.
 - `*_test.go`, `example_test.go` - unit tests and verified `Example` functions.
 - `examples/` - runnable `package main` programs: `coded`, `registry`, `markdown`, and `custom`
   (bring-your-own sinks over `log/slog`). They import only the core package and the standard
-  library, so the module stays dependency-free.
+  library.
 
 ## Build, test, lint
 
-- Build: `task build` (`go build ./...` in the root and in `apperrgrpc/`)
-- Test: `task test` (`go test ./...` in both modules); no external service/fixture required.
+- Build: `task build` (`go build ./...`)
+- Test: `task test` (`go test ./...`); no external service/fixture required.
 - Lint: `task lint` (gofmt check + `golangci-lint run` + `yamllint .`)
 - Full local gate: `task ci` (build + `go vet` + test + lint)
 - License headers: `task license` (check) / `task license:fix` (inject)
@@ -81,10 +82,11 @@ module), plus the separate `apperrgrpc` module:
   `.claude/hooks` (run `bash .claude/hooks/install.sh` once per clone).
 - Open every PR as a draft. CI skips drafts, so run the full checks locally, push once they pass,
   and mark the PR ready when the work is finished; see CLAUDE.md "CI and Actions minutes".
-- Keep the package dependency-free: it must import no logging, tracing, or third-party package.
-  Observability backends are the consumer's own adapter, never added here. A transport adapter
-  with dependencies goes in its own module, like `apperrgrpc/`, and CI (`job-go-lang-ci.yaml`,
-  `job-license-check-go.yaml`) and the Taskfile need a step for it.
+- Keep the root `apperr` package standard-library only: it must import no logging, tracing, or
+  third-party package. Observability backends are the consumer's own adapter, never added here. A
+  transport adapter with dependencies goes in its own subpackage, like `apperrgrpc/`, inside the
+  root module. Never add a nested `go.mod`: no Bugs5382 package ships nested modules, and
+  `TestSingleModule` fails the build if one appears.
 - `UserSafe` defaults to false and must stay that way: an entry is presented with only the
   template unless it opts in.
 - Any change to `Recorder`, `Logger`, or an exported registry method is a public-API change: keep
