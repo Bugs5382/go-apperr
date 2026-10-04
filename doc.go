@@ -25,6 +25,20 @@
 // Registry.Category looks it up from a coded error, so one mapper per transport
 // can turn any code into a gRPC or HTTP status without this package importing
 // either.
+//
+// An Entry may also name its code with a Symbol (SCREAMING_SNAKE_CASE, unique
+// in the registry) and opt in to UserSafe, which makes Present return the
+// entry's own Message, with {key} placeholders filled from the error's wire
+// metadata, instead of the generic template. UserSafe is false by default, so
+// an entry that does not opt in is presented exactly as before. Markdown adds
+// Symbol and User-safe columns once any entry uses them.
+//
+// WithMeta attaches wire metadata to one error and Metadata reads it back.
+// Unlike request Fields, which describe the request and reach only the sinks,
+// wire metadata describes the failure and is meant to reach the client. The
+// apperrgrpc module, a separate Go module so this one stays dependency-free,
+// sends the symbol, metadata and numeric code as a gRPC ErrorInfo and parses
+// them back.
 package apperr
 
 /*
