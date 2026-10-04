@@ -34,6 +34,12 @@ jobs:
         run: go build ./...
       - name: Test
         run: go test ./... -cover
+      - name: Build (apperrgrpc)
+        working-directory: apperrgrpc
+        run: go build ./...
+      - name: Test (apperrgrpc)
+        working-directory: apperrgrpc
+        run: go test ./... -cover
   lint:
     name: 🧹 GolangCI
     if: github.event.pull_request.draft == false
@@ -55,4 +61,11 @@ jobs:
           # Build from source with the job's Go, so a newer go.mod never
           # outruns the toolchain the prebuilt binary was compiled with.
           install-mode: goinstall
+          args: --timeout=3m
+      - name: GolangCI (apperrgrpc)
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.12.2
+          install-mode: goinstall
+          working-directory: apperrgrpc
           args: --timeout=3m

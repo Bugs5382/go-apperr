@@ -14,6 +14,9 @@ the package depends on **nothing** beyond the standard library.
 - 🪶 **Zero dependencies** — the `go.mod` requires only the standard library.
 - 🔧 **Pluggable observability** — tiny `Recorder`/`Logger` interfaces, no-op by default.
 - 📝 **Docs-ready** — render your whole code table as Markdown.
+- 🔤 **Symbols and user-safe messages** — a stable `SCREAMING_SNAKE` name per code, and an opt-in message end users may see.
+- 📨 **Wire metadata** — key/value pairs on one error that travel to the client.
+- 🛰️ **gRPC adapter** — `apperrgrpc`, its own module, builds a status with `ErrorInfo` and reads it back.
 
 ## 📦 Install
 
@@ -22,6 +25,12 @@ go get github.com/Bugs5382/go-apperr
 ```
 
 No third-party dependencies come with it — you add a logger or tracer only if you wire one.
+
+The gRPC adapter is a separate module, so only a service that imports it downloads gRPC:
+
+```bash
+go get github.com/Bugs5382/go-apperr/apperrgrpc
+```
 
 ## 🚀 Core usage
 
@@ -64,12 +73,76 @@ registries keep their codes.
 
 `WithMessageTemplate` overrides the client message; `Describe` looks a code back up for operators;
 `Markdown` renders the whole registry as a `Code | Area | Cause` table (sorted by code) for your
-error-codes doc.
+error-codes doc. Once any entry sets a `Symbol` or `UserSafe`, the table becomes
+`Code | Symbol | Area | Cause | User-safe`; a registry that uses neither renders exactly as before.
+
+## 🔤 Symbols and user-safe messages
+
+An entry can name its code with an optional `Symbol`, so clients and translation catalogs key on a
+stable name instead of a number. A symbol must match `^[A-Z][A-Z0-9_]*$` and be unique in the
+registry; `NewRegistry` rejects anything else.
+
+`UserSafe` says the entry's `Message` may be shown to end users. `Present` then returns that
+message instead of the generic template, filling each `{key}` placeholder from the error's wire
+metadata (see below):
+
+```go
+reg, _ := apperr.NewRegistry([]apperr.Entry{
+    {Code: 6001, Title: "resolver", Cause: "approver lookup failed"},
+    {
+        Code: 6010, Title: "swap", Cause: "candidate not eligible",
+        Symbol: "SWAP_NOT_ELIGIBLE", Category: apperr.CategoryFailedPrecondition,
+        UserSafe: true, Message: "That person isn't an eligible approver for stage {stage}.",
+    },
+})
+
+msg, _ := reg.Present(apperr.WithMeta(apperr.Coded(6010, nil), apperr.Meta("stage", "2")), 6000)
+// msg = "That person isn't an eligible approver for stage 2."
+
+msg, _ = reg.Present(apperr.Coded(6001, dbErr), 6000)
+// msg = "Code 6001: Internal Error"
+```
+
+🛡️ **Safe by default:** `UserSafe` is `false` unless an entry sets it, so every existing entry (and
+any unregistered code) still gets only the template and its code. A user-safe entry must have a
+non-blank `Message`. A `Message` on an entry that is not user-safe is never presented, but stays
+available through `Describe` for your docs or UI catalog. A placeholder with no matching key is
+left as written, and a substituted value is never scanned again. `Message(code)` always renders
+the template; `Present` and `PresentContext` are the paths that honour `UserSafe`.
+
+## 📨 Wire metadata
+
+`WithMeta` attaches key/value pairs to one error, and `Metadata` reads them back from anywhere in
+the chain (`errors.Join` trees included; an outer layer wins on a repeated key):
+
+```go
+err := apperr.WithMeta(
+    apperr.Coded(6010, fmt.Errorf("swap: %w", errNotEligible)),
+    apperr.Meta("new_user_id", candidateID),
+)
+
+apperr.Metadata(err) // map[new_user_id:...]
+```
+
+The wrapped error keeps its `Error()` text, its code and its `errors.Is`/`errors.As` behaviour.
+
+📌 **Metadata is not Fields.** They answer different questions:
+
+| | Wire metadata (`WithMeta`) | Request fields (`ContextWithFields`) |
+| --- | --- | --- |
+| Describes | this one failure | the request |
+| Lives on | the error | the context |
+| Reaches | the client (status details, message placeholders) | the `Recorder` and `Logger` only |
+
+Never put anything in metadata the client may not see; log-only detail belongs in Fields or the
+wrapped cause.
 
 ## 🧭 Map to a transport
 
 An entry can carry an optional, transport-neutral `Category`: `CategoryInternal` (the default when
-unset), `CategoryNotFound`, `CategoryInvalid`, `CategoryUnavailable` or `CategoryPermissionDenied`.
+unset), `CategoryNotFound`, `CategoryInvalid`, `CategoryUnavailable`, `CategoryPermissionDenied`,
+`CategoryFailedPrecondition`, `CategoryDeadlineExceeded`, `CategoryUnauthenticated` or
+`CategoryAlreadyExists`. New categories are only ever appended, so no constant changes value.
 `reg.Category(err)` looks it up from a coded error, and falls back to internal for an uncoded or
 unregistered one. One small mapper per transport then covers every code:
 
@@ -104,6 +177,30 @@ http.Error(w, msg, httpStatus(reg.Category(err)))
 
 `go-apperr` itself imports neither transport; the mappers live in your code. The `Markdown` table
 is unchanged by categories, so existing error-codes docs stay in sync.
+
+### gRPC adapter
+
+For gRPC you can skip the hand-written switch: `apperrgrpc` maps every category (`Code`) and builds
+the whole status. The status carries one `errdetails.ErrorInfo` whose `Reason` is the entry's
+`Symbol` (or the code when it has none), whose `Domain` is the one you pass, and whose `Metadata`
+is the error's wire metadata plus the numeric code under `codeNum`:
+
+```go
+import "github.com/Bugs5382/go-apperr/apperrgrpc"
+
+// server: present through the registry (sinks included) and return the status error
+return nil, apperrgrpc.Error(ctx, reg, err, 6000, "workflow.example.org")
+
+// client: read it back
+if info, ok := apperrgrpc.FromError(err); ok {
+    // info.Code == 6010, info.Symbol == "SWAP_NOT_ELIGIBLE",
+    // info.Domain == "workflow.example.org", info.Metadata["new_user_id"] == candidateID
+}
+```
+
+`codeNum` always rides along, so a relaying service recovers the original code without a copy of
+the remote registry. `FromStatus` does the same for a `*status.Status`. The adapter is its own Go
+module (`github.com/Bugs5382/go-apperr/apperrgrpc`), so the root module keeps zero dependencies.
 
 ## 🔌 Bring your own logging and tracing
 
@@ -165,8 +262,8 @@ a code is attributable at a glance.
 ## 🛠 Develop
 
 ```bash
-task build    # go build ./...
-task test     # go test ./...
+task build    # go build ./... (root module and apperrgrpc)
+task test     # go test ./... (root module and apperrgrpc)
 task lint     # gofmt + golangci-lint + yamllint
 task license  # inject MIT headers (golic)
 ```
