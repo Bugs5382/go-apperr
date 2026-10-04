@@ -26,6 +26,7 @@ OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,11 +44,28 @@ const defaultMessageTemplate = "Code %d: Internal Error"
 //
 // Category is optional and transport-neutral; left unset it is
 // CategoryInternal. Registry.Category reads it back from a coded error.
+//
+// Symbol is an optional stable name for the code in SCREAMING_SNAKE_CASE
+// (matching ^[A-Z][A-Z0-9_]*$), unique within the registry. Clients and
+// translation catalogs can key on it instead of the number; the apperrgrpc
+// module sends it as the ErrorInfo reason.
+//
+// UserSafe says Message may be shown to end users. Present returns Message for
+// a user-safe entry, with each {key} placeholder filled from the error's wire
+// metadata (see WithMeta), and the generic message template for every other
+// entry. The zero value is false, so an entry that does not opt in is
+// presented exactly as before UserSafe existed: only the code, never a
+// message. A user-safe entry must have a non-blank Message. A Message on an
+// entry that is not user-safe is never presented; it can still feed the
+// consumer's own docs or UI catalog through Describe.
 type Entry struct {
 	Code     int
 	Title    string
 	Cause    string
 	Category Category
+	Symbol   string
+	UserSafe bool
+	Message  string
 }
 
 // Registry is the consumer's own set of codes plus the presentation and
@@ -129,8 +147,9 @@ func WithLogger(l Logger) Option {
 
 // NewRegistry builds a Registry from the consumer's codes and options. It fails
 // on a duplicate code, on any code outside the service prefix when WithService
-// is set, on any code of the wrong width when WithCodeDigits is set, and on an
-// unknown Category value.
+// is set, on any code of the wrong width when WithCodeDigits is set, on an
+// unknown Category value, on a malformed or duplicate Symbol, and on a
+// user-safe entry with a blank Message.
 func NewRegistry(entries []Entry, opts ...Option) (*Registry, error) {
 	r := &Registry{
 		entries:  make(map[int]Entry, len(entries)),
@@ -144,6 +163,7 @@ func NewRegistry(entries []Entry, opts ...Option) (*Registry, error) {
 	if err := r.checkLayout(); err != nil {
 		return nil, err
 	}
+	symbols := make(map[string]int)
 	for _, e := range entries {
 		if _, dup := r.entries[e.Code]; dup {
 			return nil, fmt.Errorf("apperr: duplicate code %d", e.Code)
@@ -153,6 +173,18 @@ func NewRegistry(entries []Entry, opts ...Option) (*Registry, error) {
 		}
 		if err := r.checkCode(e.Code); err != nil {
 			return nil, err
+		}
+		if e.Symbol != "" {
+			if !symbolPattern.MatchString(e.Symbol) {
+				return nil, fmt.Errorf("apperr: code %d symbol %q must match %s", e.Code, e.Symbol, symbolPattern)
+			}
+			if prev, dup := symbols[e.Symbol]; dup {
+				return nil, fmt.Errorf("apperr: duplicate symbol %q on codes %d and %d", e.Symbol, prev, e.Code)
+			}
+			symbols[e.Symbol] = e.Code
+		}
+		if e.UserSafe && strings.TrimSpace(e.Message) == "" {
+			return nil, fmt.Errorf("apperr: code %d is user-safe but has no message", e.Code)
 		}
 		r.entries[e.Code] = e
 	}
@@ -172,19 +204,26 @@ func (r *Registry) Describe(code int) (Entry, bool) {
 
 // Message renders the sanitized client message for code via the template. It
 // works for any code, registered or not, so an unexpected code still yields a
-// safe, quotable message rather than leaking internals.
+// safe, quotable message rather than leaking internals. It always uses the
+// template, even for a user-safe entry; Present is the path that returns a
+// user-safe entry's own Message.
 func (r *Registry) Message(code int) string {
 	return fmt.Sprintf(r.tmpl, code)
 }
 
 // Present resolves the code from err (the nearest coded error) or falls back to
-// defaultCode when err carries none, and returns the sanitized client message
-// and the resolved code. It has no side effects; use PresentContext to also
-// drive the Recorder and Logger.
+// defaultCode when err carries none, and returns the client message and the
+// resolved code. The message is the entry's own Message when the resolved code
+// is registered as UserSafe, with {key} placeholders filled from Metadata(err);
+// otherwise it is the sanitized template. It has no side effects; use
+// PresentContext to also drive the Recorder and Logger.
 func (r *Registry) Present(err error, defaultCode int) (clientMsg string, code int) {
 	code = defaultCode
 	if c, ok := Code(err); ok {
 		code = c
+	}
+	if e, ok := r.entries[code]; ok && e.UserSafe {
+		return interpolate(e.Message, Metadata(err)), code
 	}
 	return r.Message(code), code
 }
@@ -202,15 +241,46 @@ func (r *Registry) PresentContext(ctx context.Context, err error, defaultCode in
 // Markdown renders the registry as a "Code | Area | Cause" table, sorted by
 // code so the output is deterministic. It is meant to be written into a
 // consumer's error-codes reference document.
+//
+// When any entry sets a Symbol or is UserSafe, the table becomes
+// "Code | Symbol | Area | Cause | User-safe", so a registry that does not use
+// them renders exactly as before.
 func (r *Registry) Markdown() string {
 	var b strings.Builder
-	b.WriteString("| Code | Area | Cause |\n")
-	b.WriteString("| --- | --- | --- |\n")
+	if !r.usesSymbolsOrUserSafe() {
+		b.WriteString("| Code | Area | Cause |\n")
+		b.WriteString("| --- | --- | --- |\n")
+		for _, c := range r.order {
+			e := r.entries[c]
+			fmt.Fprintf(&b, "| %d | %s | %s |\n", e.Code, mdCell(e.Title), mdCell(e.Cause))
+		}
+		return b.String()
+	}
+	b.WriteString("| Code | Symbol | Area | Cause | User-safe |\n")
+	b.WriteString("| --- | --- | --- | --- | --- |\n")
 	for _, c := range r.order {
 		e := r.entries[c]
-		fmt.Fprintf(&b, "| %d | %s | %s |\n", e.Code, mdCell(e.Title), mdCell(e.Cause))
+		sym := ""
+		if e.Symbol != "" {
+			sym = "`" + e.Symbol + "`"
+		}
+		safe := "no"
+		if e.UserSafe {
+			safe = "yes"
+		}
+		fmt.Fprintf(&b, "| %d | %s | %s | %s | %s |\n", e.Code, sym, mdCell(e.Title), mdCell(e.Cause), safe)
 	}
 	return b.String()
+}
+
+// usesSymbolsOrUserSafe reports whether any entry sets a Symbol or UserSafe.
+func (r *Registry) usesSymbolsOrUserSafe() bool {
+	for _, e := range r.entries {
+		if e.Symbol != "" || e.UserSafe {
+			return true
+		}
+	}
+	return false
 }
 
 // checkLayout validates the prefix and width options against each other before
@@ -264,6 +334,40 @@ func (r *Registry) serviceRange() (lo, hi int) {
 	}
 	lo = r.service * span
 	return lo, lo + span - 1
+}
+
+// symbolPattern is the shape every Entry.Symbol must have.
+var symbolPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]*$`)
+
+// interpolate replaces each {key} in msg with meta[key] in one left-to-right
+// pass. A placeholder with no matching key stays as written, and a substituted
+// value is never scanned again, so metadata cannot inject further placeholders.
+func interpolate(msg string, meta map[string]string) string {
+	if len(meta) == 0 || !strings.Contains(msg, "{") {
+		return msg
+	}
+	var b strings.Builder
+	for {
+		open := strings.IndexByte(msg, '{')
+		if open < 0 {
+			break
+		}
+		end := strings.IndexByte(msg[open+1:], '}')
+		if end < 0 {
+			break
+		}
+		closeAt := open + 1 + end
+		b.WriteString(msg[:open])
+		if v, ok := meta[msg[open+1:closeAt]]; ok {
+			b.WriteString(v)
+			msg = msg[closeAt+1:]
+			continue
+		}
+		b.WriteByte('{')
+		msg = msg[open+1:]
+	}
+	b.WriteString(msg)
+	return b.String()
 }
 
 // digitsOf returns the decimal digits of code's absolute value.
